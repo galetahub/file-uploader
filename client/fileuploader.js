@@ -257,10 +257,14 @@ qq.FileUploaderBasic = function(o){
         button: null,
         multiple: true,
         maxConnections: 3,
+        method: 'POST',
+        fieldName: 'qqfile',
         // validation        
         allowedExtensions: [],               
         sizeLimit: 0,   
-        minSizeLimit: 0,                             
+        minSizeLimit: 0,
+        maxFilesCount: 0, // 0 - no limit, works only in multiple mode
+        minFilesCount: 0, // 0 - no limit, works only in multiple mode
         // events
         // return false to cancel submit
         onSubmit: function(id, fileName){},
@@ -273,7 +277,9 @@ qq.FileUploaderBasic = function(o){
             sizeError: "{file} is too large, maximum file size is {sizeLimit}.",
             minSizeError: "{file} is too small, minimum file size is {minSizeLimit}.",
             emptyError: "{file} is empty, please select files again without it.",
-            onLeave: "The files are being uploaded, if you leave now the upload will be cancelled."            
+            onLeave: "The files are being uploaded, if you leave now the upload will be cancelled.",
+            maxFilesError: "You must select less then {maxFilesCount} files.",
+            minFilesError: "You must select more then {minFilesCount} files."
         },
         showMessage: function(message){
             alert(message);
@@ -283,6 +289,8 @@ qq.FileUploaderBasic = function(o){
         
     // number of files being uploaded
     this._filesInProgress = 0;
+    // number of files was processed
+    this._filesUploaded = 0;
     this._handler = this._createUploadHandler(); 
     
     if (this._options.button){ 
@@ -323,7 +331,9 @@ qq.FileUploaderBasic.prototype = {
         var handler = new qq[handlerClass]({
             debug: this._options.debug,
             action: this._options.action,         
-            maxConnections: this._options.maxConnections,   
+            maxConnections: this._options.maxConnections,
+            fieldName: this._options.fieldName,
+            method: this._options.method,   
             onProgress: function(id, fileName, loaded, total){                
                 self._onProgress(id, fileName, loaded, total);
                 self._options.onProgress(id, fileName, loaded, total);                    
@@ -362,6 +372,8 @@ qq.FileUploaderBasic.prototype = {
         this._filesInProgress--;                 
         if (result.error){
             this._options.showMessage(result.error);
+        } else {
+          this._filesUploaded++;
         }             
     },
     _onCancel: function(id, fileName){
@@ -378,15 +390,11 @@ qq.FileUploaderBasic.prototype = {
         this._button.reset();   
     },  
     _uploadFileList: function(files){
-        for (var i=0; i<files.length; i++){
-            if ( !this._validateFile(files[i])){
-                return;
-            }            
+        if ( this._validateFiles(files) ) {
+          for (var i=0; i<files.length; i++){
+              this._uploadFile(files[i]);        
+          }
         }
-        
-        for (var i=0; i<files.length; i++){
-            this._uploadFile(files[i]);        
-        }        
     },       
     _uploadFile: function(fileContainer){      
         var id = this._handler.add(fileContainer);
@@ -396,6 +404,31 @@ qq.FileUploaderBasic.prototype = {
             this._onSubmit(id, fileName);
             this._handler.upload(id, this._options.params);
         }
+    },
+    _validateFiles: function(files){
+        var uploadedCount = this._filesUploaded + files.length;
+        
+        if (this._options.maxFilesCount > 0) {
+          if ( uploadedCount > this._options.maxFilesCount) { 
+            this._error('maxFilesError', 'name');
+            return false;
+          }
+        }
+        
+        if (this._options.minFilesCount > 0) {
+          if ( uploadedCount < this._options.minFilesCount) {
+            this._error('minFilesError', 'name');
+            return false;
+          }
+        }
+        
+        for (var i=0; i<files.length; i++){
+            if ( !this._validateFile(files[i])){
+                return false;
+            }            
+        }
+        
+        return true;
     },      
     _validateFile: function(file){
         var name, size;
@@ -437,6 +470,8 @@ qq.FileUploaderBasic.prototype = {
         r('{extensions}', this._options.allowedExtensions.join(', '));
         r('{sizeLimit}', this._formatSize(this._options.sizeLimit));
         r('{minSizeLimit}', this._formatSize(this._options.minSizeLimit));
+        r('{maxFilesCount}', this._options.maxFilesCount);
+        r('{minFilesCount}', this._options.minFilesCount);
         
         this._options.showMessage(message);                
     },
@@ -856,6 +891,8 @@ qq.UploadHandlerAbstract = function(o){
     this._options = {
         debug: false,
         action: '/upload.php',
+        method: 'POST',
+        fieldName: 'qqfile',
         // maximum number of concurrent uploads        
         maxConnections: 999,
         onProgress: function(id, fileName, loaded, total){},
@@ -961,7 +998,7 @@ qq.extend(qq.UploadHandlerForm.prototype, qq.UploadHandlerAbstract.prototype);
 
 qq.extend(qq.UploadHandlerForm.prototype, {
     add: function(fileInput){
-        fileInput.setAttribute('name', 'qqfile');
+        fileInput.setAttribute('name', this._options.fieldName);
         var id = 'qq-upload-handler-iframe' + qq.getUniqueId();       
         
         this._inputs[id] = fileInput;
@@ -1097,10 +1134,11 @@ qq.extend(qq.UploadHandlerForm.prototype, {
         // form.setAttribute('method', 'post');
         // form.setAttribute('enctype', 'multipart/form-data');
         // Because in this case file won't be attached to request
-        var form = qq.toElement('<form method="post" enctype="multipart/form-data"></form>');
+        var form = qq.toElement('<form enctype="multipart/form-data"></form>');
 
         var queryString = qq.obj2url(params, this._options.action);
-
+        
+        form.setAttribute('method', this._options.method);
         form.setAttribute('action', queryString);
         form.setAttribute('target', iframe.name);
         form.style.display = 'none';
@@ -1194,13 +1232,16 @@ qq.extend(qq.UploadHandlerXhr.prototype, {
 
         // build query string
         params = params || {};
-        params['qqfile'] = name;
+        params[this._options.fieldName] = name;
         var queryString = qq.obj2url(params, this._options.action);
 
-        xhr.open("POST", queryString, true);
+        xhr.open(this._options.method, queryString, true);
         xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
         xhr.setRequestHeader("X-File-Name", encodeURIComponent(name));
+        xhr.setRequestHeader('X-File-Size', size);
+        xhr.setRequestHeader('X-File-Type', file.type);
         xhr.setRequestHeader("Content-Type", "application/octet-stream");
+        
         xhr.send(file);
     },
     _onComplete: function(id, xhr){

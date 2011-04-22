@@ -68,6 +68,8 @@ If you can't find the one you need, check the readme.txt in the same folder.
     
     // url of the server-side upload script, should be on the same domain
     action: '/server/upload',
+    // param name
+    fieldName: 'qqfile',
     // additional data to send, name-value pairs
     params: {},
     
@@ -78,6 +80,8 @@ If you can't find the one you need, check the readme.txt in the same folder.
     // this option isn't supported in all browsers
     sizeLimit: 0, // max size   
     minSizeLimit: 0, // min size
+    maxFilesCount: 0, // 0 - no limit, works only in multiple mode
+    minFilesCount: 0, // 0 - no limit, works only in multiple mode
     
     // set to true to output server response to console
     debug: false,
