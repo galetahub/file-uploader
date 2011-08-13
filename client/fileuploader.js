@@ -1241,7 +1241,9 @@ qq.extend(qq.UploadHandlerXhr.prototype, {
         xhr.setRequestHeader('X-File-Size', size);
         xhr.setRequestHeader('X-File-Type', file.type);
         xhr.setRequestHeader("Content-Type", "application/octet-stream");
-        
+
+        if ($.rails) $.rails.CSRFProtection(xhr);        
+
         xhr.send(file);
     },
     _onComplete: function(id, xhr){
